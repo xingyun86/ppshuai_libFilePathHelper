@@ -1,0 +1,5 @@
+EXPORTS 
+
+GetSystemRecycleBinPathA @1
+
+GetSystemRecycleBinPathW @2 
