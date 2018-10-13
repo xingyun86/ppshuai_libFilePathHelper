@@ -29,6 +29,8 @@
 #include <tchar.h>
 #include <stdio.h>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 HRESULT
 GetFolderDescriptionIdA(LPCSTR pszPath, SHDESCRIPTIONID *pdid)
@@ -225,14 +227,109 @@ std::wstring GetRecycleBinPathW()
 	return (L"");
 }
 
-bool GetSystemRecycleBinPathA(CHAR * wPath, int nSize)
+
+void DeletePathFilesA(std::string strRootPath)
+{
+	HANDLE hFileFind = NULL;
+	WIN32_FIND_DATAA wfd = { 0 };
+	CHAR cFindPath[MAX_PATH] = { 0 };
+	std::vector<std::string> sv = {};
+	wsprintfA(cFindPath, "%s\\*.*", strRootPath.c_str());
+	hFileFind = FindFirstFileA(cFindPath, &wfd);
+	if (hFileFind)
+	{
+		do
+		{
+			if (lstrcmpA(wfd.cFileName, ".") && lstrcmpA(wfd.cFileName, ".."))
+			{
+				if ((wfd.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY)) == (FILE_ATTRIBUTE_DIRECTORY))
+				{
+					DeletePathFilesA(std::string(strRootPath + wfd.cFileName + std::string("\\")).c_str());
+				}
+				else
+				{
+					sv.push_back(std::string(strRootPath + wfd.cFileName).c_str());
+				}
+			}
+		} while (FindNextFileA(hFileFind, &wfd));
+
+		std::for_each(sv.begin(), sv.end(), [&](auto & it) {DeleteFileA(it.c_str()); });
+	}
+}
+void DeletePathFilesW(std::wstring wstrRootPath)
+{
+	HANDLE hFileFind = NULL;
+	WIN32_FIND_DATAW wfd = { 0 };
+	std::vector<std::wstring> sv = {};
+	WCHAR wFindPath[MAX_PATH] = { 0 };
+
+	wsprintfW(wFindPath, L"%s\\*.*", wstrRootPath.c_str());
+	hFileFind = FindFirstFileW(wFindPath, &wfd);
+	if (hFileFind)
+	{
+		do
+		{
+			if (lstrcmpW(wfd.cFileName, L".") && lstrcmpW(wfd.cFileName, L".."))
+			{
+				if ((wfd.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY)) == (FILE_ATTRIBUTE_DIRECTORY))
+				{
+					DeletePathFilesW(std::wstring(wstrRootPath + wfd.cFileName + std::wstring(L"\\")).c_str());
+				}
+				else
+				{
+					sv.push_back(std::wstring(wstrRootPath + wfd.cFileName).c_str());
+				}
+			}
+		} while (FindNextFileW(hFileFind, &wfd));
+
+		std::for_each(sv.begin(), sv.end(), [&](auto & it) {DeleteFileW(it.c_str()); });
+	}
+}
+
+void DeleteForceA(std::string strFile)
+{
+	BOOL bResult = FALSE;
+	std::string strRecycleBin = GetRecycleBinPathA();
+
+	std::string strPath = strRecycleBin + ("\\$TMP.BIN\\");
+	std::string strNewFile = strPath + std::to_string(GetTickCount64());
+
+	bResult = CreateDirectoryA(strPath.c_str(), NULL);
+
+	DeletePathFilesA(strPath.c_str());
+
+	bResult = SetFileAttributesA(strFile.c_str(), FILE_ATTRIBUTE_NORMAL);
+	bResult = MoveFileExA(strFile.c_str(), strNewFile.c_str(), MOVEFILE_REPLACE_EXISTING/*MOVEFILE_COPY_ALLOWED*/);
+	bResult = MoveFileExA(strNewFile.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+	bResult = SetFileAttributesA(strNewFile.c_str(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+}
+
+void DeleteForceW(std::wstring wstrFile)
+{
+	BOOL bResult = FALSE;
+	std::wstring wstrRecycleBin = GetRecycleBinPathW();
+
+	std::wstring wstrPath = wstrRecycleBin + (L"\\$TMP.BIN\\");
+	std::wstring wstrNewFile = wstrPath + std::to_wstring(GetTickCount64());
+
+	bResult = CreateDirectoryW(wstrPath.c_str(), NULL);
+
+	DeletePathFilesW(wstrPath.c_str());
+
+	bResult = SetFileAttributesW(wstrFile.c_str(), FILE_ATTRIBUTE_NORMAL);
+	bResult = MoveFileExW(wstrFile.c_str(), wstrNewFile.c_str(), MOVEFILE_REPLACE_EXISTING/*MOVEFILE_COPY_ALLOWED*/);
+	bResult = MoveFileExW(wstrNewFile.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+	bResult = SetFileAttributesW(wstrNewFile.c_str(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+}
+
+bool GetSystemRecycleBinPathA(CHAR * cPath, int nSize)
 {
 	std::string a = GetRecycleBinPathA();
 	if (a.length())
 	{
 		if (a.length() < nSize)
 		{
-			lstrcpyA(wPath, a.c_str());
+			lstrcpyA(cPath, a.c_str());
 			return true;
 		}
 	}
@@ -252,4 +349,12 @@ bool GetSystemRecycleBinPathW(WCHAR * wPath, int nSize)
 	}
 
 	return false;
+}
+void ForceDeleteFileA(CHAR * cPath)
+{
+	DeleteForceA(cPath);
+}
+void ForceDeleteFileW(WCHAR * wPath)
+{
+	DeleteForceW(wPath);
 }
